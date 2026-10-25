@@ -182,7 +182,7 @@ function closeRec(){
   if(prevUrl){URL.revokeObjectURL(prevUrl);prevUrl=null}
   mv.srcObject=null;mv.removeAttribute("src");blob=null;
 }
-let facing="user",sound=true;
+let facing=LS("hl_facing")||"environment",sound=true;
 const hasMic=()=>!!(stream&&stream.getAudioTracks().length);
 const vc=()=>({facingMode:{ideal:facing},width:{ideal:480},height:{ideal:640}});
 async function getStream(){
@@ -191,13 +191,22 @@ async function getStream(){
   catch(e){stream=await navigator.mediaDevices.getUserMedia({video:vc(),audio:false});sound=false;toast("마이크를 쓸 수 없어 소리 없이 찍어요")}
 }
 async function flip(){
-  facing=facing==="user"?"environment":"user";mmsg.textContent="카메라 전환 중…";
+  const prev=facing,next=facing==="user"?"environment":"user";
+  const audio=stream?stream.getAudioTracks():[];
+  mmsg.textContent="카메라 전환 중…";btns([]);
+  if(stream)stream.getVideoTracks().forEach(t=>t.stop());
+  const open=async f=>{
+    const base={width:{ideal:480},height:{ideal:640}};
+    try{return await navigator.mediaDevices.getUserMedia({video:{...base,facingMode:{exact:f}},audio:false})}
+    catch(e){return await navigator.mediaDevices.getUserMedia({video:{...base,facingMode:{ideal:f}},audio:false})}
+  };
   try{
-    const audio=stream?stream.getAudioTracks():[];
-    const ns=await navigator.mediaDevices.getUserMedia({video:vc(),audio:false});
-    if(stream)stream.getVideoTracks().forEach(t=>t.stop());
+    const ns=await open(next);facing=next;LS("hl_facing",facing);
     stream=new MediaStream([...ns.getVideoTracks(),...audio]);
-  }catch(e){facing=facing==="user"?"environment":"user";toast("카메라를 전환할 수 없어요")}
+  }catch(e){
+    toast("이 기기에서는 "+(next==="user"?"전면":"후면")+" 카메라로 전환할 수 없어요");
+    try{const ns=await open(prev);stream=new MediaStream([...ns.getVideoTracks(),...audio])}catch(e2){mmsg.textContent="카메라를 다시 켤 수 없어요. 닫고 다시 시도해주세요.";btns([["닫기",closeRec]]);return}
+  }
   showLive();
 }
 function toggleSound(){
