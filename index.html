@@ -183,14 +183,27 @@ function closeRec(){
   mv.srcObject=null;mv.removeAttribute("src");blob=null;
 }
 let facing="user",sound=true;
+const hasMic=()=>!!(stream&&stream.getAudioTracks().length);
+const vc=()=>({facingMode:{ideal:facing},width:{ideal:480},height:{ideal:640}});
 async function getStream(){
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
-  const v={facingMode:{ideal:facing},width:{ideal:480},height:{ideal:640}};
-  try{stream=await navigator.mediaDevices.getUserMedia({video:v,audio:sound})}
-  catch(e){stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing}},audio:false});if(sound){sound=false;toast("마이크를 쓸 수 없어 소리 없이 찍어요")}}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:vc(),audio:true})}
+  catch(e){stream=await navigator.mediaDevices.getUserMedia({video:vc(),audio:false});sound=false;toast("마이크를 쓸 수 없어 소리 없이 찍어요")}
 }
-async function flip(){facing=facing==="user"?"environment":"user";mmsg.textContent="카메라 전환 중…";try{await getStream()}catch(e){toast("카메라를 전환할 수 없어요")}showLive()}
-async function toggleSound(){sound=!sound;try{await getStream()}catch(e){}showLive()}
+async function flip(){
+  facing=facing==="user"?"environment":"user";mmsg.textContent="카메라 전환 중…";
+  try{
+    const audio=stream?stream.getAudioTracks():[];
+    const ns=await navigator.mediaDevices.getUserMedia({video:vc(),audio:false});
+    if(stream)stream.getVideoTracks().forEach(t=>t.stop());
+    stream=new MediaStream([...ns.getVideoTracks(),...audio]);
+  }catch(e){facing=facing==="user"?"environment":"user";toast("카메라를 전환할 수 없어요")}
+  showLive();
+}
+function toggleSound(){
+  if(!hasMic()){toast("마이크 권한이 없어서 소리 없이 찍어요");return}
+  sound=!sound;showLive();
+}
 async function openRec(){
   const n=new Date();slot={day:dk(n),hour:n.getHours()};
   const id=slot.day+"_"+pad(slot.hour)+"_"+uid;
@@ -202,12 +215,12 @@ async function openRec(){
 }
 function showLive(){
   blob=null;mv.className=facing==="user"?"mir":"";mv.removeAttribute("src");mv.srcObject=stream;mv.muted=true;mv.loop=false;mv.play().catch(()=>{});
-  mmsg.textContent=(facing==="user"?"전면":"후면")+" 카메라 · "+(sound?"소리 켜짐":"소리 꺼짐")+" · 2초 촬영";
-  btns([["닫기",closeRec],["🔄",flip],[sound?"🔊":"🔇",toggleSound],["● 촬영",record,1]]);
+  mmsg.textContent=(facing==="user"?"전면":"후면")+" 카메라 · "+(sound&&hasMic()?"소리 켜짐":"소리 꺼짐")+" · 2초 촬영";
+  btns([["닫기",closeRec],["🔄",flip],[sound&&hasMic()?"🔊":"🔇",toggleSound],["● 촬영",record,1]]);
 }
 function record(){
   const mime=["video/mp4","video/webm;codecs=vp9,opus","video/webm"].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||"";
-  let rec;try{rec=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:1200000}:{})}catch(e){mmsg.textContent="이 브라우저는 영상 촬영을 지원하지 않아요.";return}
+  let rec;try{const rs=new MediaStream([...stream.getVideoTracks(),...(sound?stream.getAudioTracks():[])]);rec=new MediaRecorder(rs,mime?{mimeType:mime,videoBitsPerSecond:1200000}:{})}catch(e){mmsg.textContent="이 브라우저는 영상 촬영을 지원하지 않아요.";return}
   const ch=[];rec.ondataavailable=e=>e.data&&e.data.size&&ch.push(e.data);
   rec.onstop=()=>{blob=new Blob(ch,{type:rec.mimeType||mime||"video/webm"});preview()};
   btns([]);rec.start();let t=2;mmsg.innerHTML='<span class="ring">● 2</span>';
@@ -215,7 +228,7 @@ function record(){
   setTimeout(()=>{if(rec.state!=="inactive")rec.stop()},2000);
 }
 function preview(){
-  mv.srcObject=null;mv.className="";prevUrl=URL.createObjectURL(blob);mv.src=prevUrl;mv.loop=true;mv.muted=!sound;mv.play().catch(()=>{mv.muted=true;mv.play().catch(()=>{})});
+  mv.srcObject=null;mv.className="";prevUrl=URL.createObjectURL(blob);mv.src=prevUrl;mv.loop=true;mv.muted=!(sound&&hasMic());mv.play().catch(()=>{mv.muted=true;mv.play().catch(()=>{})});
   mmsg.textContent="이대로 올릴까요?";
   btns([["다시 찍기",()=>{URL.revokeObjectURL(prevUrl);prevUrl=null;showLive()}],["올리기",upload,1]]);
 }
