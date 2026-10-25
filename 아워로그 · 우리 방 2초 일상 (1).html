@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>아워로그 · 우리 방 2초 일상</title>
+<style>
+:root{--bg:#faf8f5;--card:#fff;--ink:#222;--mute:#8a8580;--line:#ece7e1;--acc:#ff6b4a;--accbg:#fff0ec;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17161a;--card:#222126;--ink:#f1eeea;--mute:#8d8993;--line:#34323a;--acc:#ff7d60;--accbg:#3a2a27;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17161a;--card:#222126;--ink:#f1eeea;--mute:#8d8993;--line:#34323a;--acc:#ff7d60;--accbg:#3a2a27;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Pretendard",-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;line-height:1.5}
+main{max-width:560px;margin:0 auto;padding:18px 16px 80px}
+h1{font-size:22px;margin:0}h1 span{color:var(--acc)}
+.sub{color:var(--mute);font-size:13px;margin:2px 0 14px}
+button{font:inherit;cursor:pointer}
+.btn{border:0;border-radius:12px;padding:10px 16px;background:var(--line);color:var(--ink);font-size:14px}
+.btn.p{background:var(--acc);color:#fff}
+.btn:disabled{opacity:.4}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+input{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:10px;font:inherit}
+.rooms{display:grid;gap:8px;margin:12px 0}
+.room{display:flex;justify-content:space-between;align-items:center;text-align:left;width:100%;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;color:var(--ink)}
+.room small{color:var(--mute)}
+.form{display:grid;gap:8px;margin-top:10px}
+.top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.top h2{margin:0;font-size:18px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code{font-size:12px;color:var(--mute);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px 8px;color:var(--ink)}
+.cal{margin-bottom:14px}
+.calh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.calh button{background:none;border:0;color:var(--ink);font-size:18px;padding:4px 12px}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:13px}
+.grid .w{color:var(--mute);font-size:11px}
+.d{position:relative;padding:7px 0;border-radius:10px;background:none;border:0;color:var(--ink)}
+.d.on{background:var(--acc);color:#fff}
+.d.today{outline:1px solid var(--acc)}
+.d i{position:absolute;left:50%;bottom:2px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--acc)}
+.d.on i{background:#fff}
+.d[disabled]{opacity:.25}
+.hour{margin-bottom:14px}
+.hour h3{margin:0 0 6px;font-size:13px;color:var(--mute);display:flex;align-items:center;gap:6px}
+.hour.now h3{color:var(--acc)}
+.clips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.clip{flex:none;width:132px}
+.clip video{width:132px;height:176px;object-fit:cover;border-radius:12px;background:#000;display:block}
+.clip.me video{outline:2px solid var(--acc)}
+.clip small{display:block;color:var(--mute);font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec{flex:none;width:132px;height:176px;border-radius:12px;border:2px dashed var(--acc);background:var(--accbg);color:var(--acc);font-weight:700;font-size:14px}
+.none{color:var(--mute);font-size:13px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.modal.on{display:flex}
+.mbox{width:100%;max-width:340px;text-align:center;color:#fff}
+.mbox video{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:18px;background:#000}
+.mbox video.mir{transform:scaleX(-1)}
+.mbox p{margin:10px 0;font-size:14px;min-height:21px}
+.mbox .row{display:flex;gap:8px;justify-content:center}
+.ring{font-size:42px;font-weight:800}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;transition:.3s;pointer-events:none;z-index:99;max-width:90%;text-align:center}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<main id="app"><h1>아워<span>로그</span> ⏱</h1><p class="sub">불러오는 중…</p></main>
+<div class="modal" id="modal"><div class="mbox">
+  <video id="mv" playsinline muted></video>
+  <p id="mmsg"></p>
+  <div class="row" id="mbtn"></div>
+</div></div>
+<div class="toast" id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pad=n=>String(n).padStart(2,"0");
+const dk=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const today=()=>dk(new Date());
+function toast(t){const e=$("toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2400)}
+let db,assets,user,uid,joined=[],R=null,unsubs=[],names={},monthDays={};
+const S={day:today(),month:new Date()};
+
+async function resolve(ids){
+  const need=[...new Set(ids)].filter(i=>!(i in names));if(!need.length)return;
+  try{const p=await user.profiles(need);need.forEach(i=>names[i]=(p[i]&&p[i].name)||"친구")}catch(e){need.forEach(i=>names[i]="친구")}
+}
+const nm=i=>i===uid?"나":(names[i]||"친구");
+const safe=s=>String(s).replace(/[^\w-]/g,"_");
+
+async function boot(){
+  try{
+    if(!window.claude)throw 0;
+    [db,assets,user]=await Promise.all([claude.use("db"),claude.use("assets"),claude.use("user")]);
+    if(!db||!user)throw 0;
+    uid=safe(await user.id());
+  }catch(e){
+    $("app").innerHTML=`<h1>아워<span>로그</span> ⏱</h1><div class="card" style="margin-top:14px">이 앱은 로그인한 상태로 공유 링크에서 열어야 데이터베이스(방, 영상)를 쓸 수 있어요. 로그인 후 다시 열어주세요.</div>`;return;
+  }
+  await resolve([uid]);
+  db.collection("data/users/"+uid).onSnapshot(s=>{
+    joined=s.docs.filter(d=>d.id.startsWith("room_")).map(d=>d.data());
+    if(!R)home();
+  },()=>home());
+  home();
+}
+
+/* ---------- home ---------- */
+function clean(){unsubs.forEach(u=>u());unsubs=[]}
+function home(){
+  R=null;clean();
+  $("app").innerHTML=`<h1>아워<span>로그</span> ⏱</h1><p class="sub">친구들과 1시간마다 2초 영상으로 일상을 나눠요.</p>
+  <div class="rooms">${joined.length?joined.map(r=>`<button class="room" data-open="${esc(r.id)}"><span><b>${esc(r.name)}</b></span><small>입장 ›</small></button>`).join(""):'<div class="none">아직 참여한 방이 없어요. 아래에서 만들거나 코드로 입장하세요.</div>'}</div>
+  <div class="card"><b>새 방 만들기</b><div class="form"><input id="nn" maxlength="20" placeholder="방 이름 (예: 우리 가족)"><button class="btn p" id="mk">만들기</button></div></div>
+  <div class="card" style="margin-top:10px"><b>초대 코드로 입장</b><div class="form"><input id="cc" maxlength="8" placeholder="6자리 코드" style="text-transform:uppercase"><button class="btn" id="jn">입장하기</button></div></div>`;
+  $("mk").onclick=makeRoom;$("jn").onclick=joinRoom;
+  document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>openRoom(joined.find(r=>r.id===b.dataset.open)));
+}
+async function makeRoom(){
+  const name=$("nn").value.trim();if(!name){toast("방 이름을 적어주세요");return}
+  const code=Array.from({length:6},()=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.random()*32|0]).join("");
+  const id="r"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  try{
+    await db.collection("rooms").doc(id).set({name,code,owner:uid,ts:Date.now()});
+    await db.collection("data/users/"+uid).doc("room_"+id).set({id,name,code});
+    toast("방을 만들었어요. 코드: "+code);openRoom({id,name,code});
+  }catch(e){toast("방을 만들 수 없어요 ("+(e.code||"오류")+")")}
+}
+async function joinRoom(){
+  const code=$("cc").value.trim().toUpperCase();if(!code)return;
+  try{
+    const s=await db.collection("rooms").where("code","==",code).limit(1).get();
+    if(s.empty){toast("코드를 찾을 수 없어요");return}
+    const d=s.docs[0],r=d.data(),room={id:d.id,name:r.name,code:r.code};
+    await db.collection("data/users/"+uid).doc("room_"+d.id).set(room);openRoom(room);
+  }catch(e){toast("입장할 수 없어요 ("+(e.code||"오류")+")")}
+}
+
+/* ---------- room ---------- */
+const posts=()=>db.collection("rooms/"+R.id+"/posts");
+function openRoom(r){
+  R=r;clean();S.day=today();S.month=new Date();
+  $("app").innerHTML=`<div class="top"><button class="btn" id="bk">‹</button><h2>${esc(r.name)}</h2><button class="code" id="cp">코드 ${esc(r.code)} 복사</button></div>
+  <div class="card cal" id="cal"></div><div id="feed"></div>`;
+  $("bk").onclick=home;
+  $("cp").onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(r.code).then(()=>toast("코드를 복사했어요"),()=>toast("코드: "+r.code))};
+  drawCal();loadMonth();watchDay();
+}
+async function loadMonth(){
+  const y=S.month.getFullYear(),m=S.month.getMonth();
+  const a=dk(new Date(y,m,1)),b=dk(new Date(y,m+1,0));
+  try{
+    const s=await posts().where("day",">=",a).where("day","<=",b).limit(1000).get();
+    monthDays={};s.docs.forEach(d=>{const x=d.data();monthDays[x.day]=(monthDays[x.day]||0)+1});
+  }catch(e){monthDays={}}
+  drawCal();
+}
+function drawCal(){
+  const y=S.month.getFullYear(),m=S.month.getMonth(),first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate(),t=today();
+  let h=`<div class="calh"><button data-mv="-1">‹</button><b>${y}년 ${m+1}월</b><button data-mv="1">›</button></div><div class="grid">`+"일월화수목금토".split("").map(w=>`<div class="w">${w}</div>`).join("");
+  for(let i=0;i<first;i++)h+="<div></div>";
+  for(let d=1;d<=n;d++){const k=y+"-"+pad(m+1)+"-"+pad(d);h+=`<button class="d ${k===S.day?"on":""} ${k===t?"today":""}" data-day="${k}" ${k>t?"disabled":""}>${d}${monthDays[k]?"<i></i>":""}</button>`}
+  $("cal").innerHTML=h+"</div>";
+  $("cal").querySelectorAll("[data-mv]").forEach(b=>b.onclick=()=>{S.month=new Date(y,m+ +b.dataset.mv,1);loadMonth()});
+  $("cal").querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>{S.day=b.dataset.day;drawCal();watchDay()});
+}
+let dayUnsub=null;
+function watchDay(){
+  if(dayUnsub)dayUnsub();
+  dayUnsub=posts().where("day","==",S.day).limit(300).onSnapshot(async s=>{
+    const list=s.docs.map(d=>d.data());await resolve(list.map(p=>p.uid));drawFeed(list);
+  },e=>{$("feed").innerHTML='<div class="none">불러올 수 없어요.</div>'});
+  unsubs.push(()=>{if(dayUnsub)dayUnsub();dayUnsub=null});
+}
+function drawFeed(list){
+  const isToday=S.day===today(),H=new Date().getHours(),by={};
+  list.forEach(p=>(by[p.hour]=by[p.hour]||[]).push(p));
+  const [y,m,d]=S.day.split("-").map(Number);
+  let h=`<div class="sub" style="margin-top:0"><b style="color:var(--ink)">${m}월 ${d}일 (${"일월화수목금토"[new Date(y,m-1,d).getDay()]})</b> · 영상 ${list.length}개</div>`;
+  const hrs=new Set(Object.keys(by).map(Number));if(isToday)hrs.add(H);
+  const arr=[...hrs].sort((a,b)=>b-a);
+  if(!arr.length)h+='<div class="none">이 날은 올라온 영상이 없어요.</div>';
+  arr.forEach(hr=>{
+    const ps=(by[hr]||[]).sort((a,b)=>a.ts-b.ts),mine=ps.some(p=>p.uid===uid),now=isToday&&hr===H;
+    h+=`<div class="hour ${now?"now":""}"><h3>${pad(hr)}:00${now?" · 지금":""}</h3><div class="clips">`;
+    if(now&&!mine)h+=`<button class="rec" id="rec">● 2초 찍기</button>`;
+    h+=ps.map(p=>`<div class="clip ${p.uid===uid?"me":""}"><video src="${esc(p.url)}" muted loop playsinline autoplay preload="metadata"></video><small>${esc(nm(p.uid))}</small></div>`).join("");
+    if(!ps.length&&!now)h+='<span class="none">없음</span>';
+    h+="</div></div>";
+  });
+  $("feed").innerHTML=h;
+  document.querySelectorAll(".clip video").forEach(v=>{v.onclick=()=>{v.muted=!v.muted;toast(v.muted?"소리 끔":"소리 켬")};v.play().catch(()=>{})});
+  if($("rec"))$("rec").onclick=openRec;
+}
+
+/* ---------- recorder ---------- */
+let stream=null,blob=null,prevUrl=null,slot=null;
+const mv=$("mv"),mmsg=$("mmsg"),mbtn=$("mbtn");
+function btns(arr){mbtn.innerHTML="";arr.forEach(([t,f,p])=>{const b=document.createElement("button");b.className="btn"+(p?" p":"");b.textContent=t;b.onclick=f;mbtn.appendChild(b)})}
+function closeRec(){
+  $("modal").classList.remove("on");
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  if(prevUrl){URL.revokeObjectURL(prevUrl);prevUrl=null}
+  mv.srcObject=null;mv.removeAttribute("src");blob=null;
+}
+async function openRec(){
+  if(!assets){toast("영상 업로드 권한이 없어요. 방 링크를 ‘기여자’ 이상으로 공유받아야 해요");return}
+  const n=new Date();slot={day:dk(n),hour:n.getHours()};
+  const id=slot.day+"_"+pad(slot.hour)+"_"+uid;
+  try{if((await posts().doc(id).get()).exists){toast("이번 시간은 이미 올렸어요");return}}catch(e){}
+  $("modal").classList.add("on");mmsg.textContent="카메라를 켜는 중…";btns([["닫기",closeRec]]);
+  try{
+    try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:480},height:{ideal:640}},audio:true})}
+    catch(e){stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}})}
+  }catch(e){mmsg.textContent="카메라를 사용할 수 없어요. 브라우저에서 카메라 권한을 허용했는지 확인해주세요.";return}
+  showLive();
+}
+function showLive(){
+  blob=null;mv.className="mir";mv.removeAttribute("src");mv.srcObject=stream;mv.muted=true;mv.loop=false;mv.play().catch(()=>{});
+  mmsg.textContent="준비되면 촬영을 눌러요 (2초)";btns([["닫기",closeRec],["● 촬영",record,1]]);
+}
+function record(){
+  const mime=["video/mp4","video/webm;codecs=vp9,opus","video/webm"].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||"";
+  let rec;try{rec=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:1200000}:{})}catch(e){mmsg.textContent="이 브라우저는 영상 촬영을 지원하지 않아요.";return}
+  const ch=[];rec.ondataavailable=e=>e.data&&e.data.size&&ch.push(e.data);
+  rec.onstop=()=>{blob=new Blob(ch,{type:rec.mimeType||mime||"video/webm"});preview()};
+  btns([]);rec.start();let t=2;mmsg.innerHTML='<span class="ring">● 2</span>';
+  const iv=setInterval(()=>{t--;if(t>0)mmsg.innerHTML='<span class="ring">● '+t+"</span>";else clearInterval(iv)},1000);
+  setTimeout(()=>{if(rec.state!=="inactive")rec.stop()},2000);
+}
+function preview(){
+  mv.srcObject=null;mv.className="mir";prevUrl=URL.createObjectURL(blob);mv.src=prevUrl;mv.loop=true;mv.muted=false;mv.play().catch(()=>{mv.muted=true;mv.play().catch(()=>{})});
+  mmsg.textContent="이대로 올릴까요?";
+  btns([["다시 찍기",()=>{URL.revokeObjectURL(prevUrl);prevUrl=null;showLive()}],["올리기",upload,1]]);
+}
+async function upload(){
+  btns([]);mmsg.textContent="올리는 중…";
+  try{
+    const up=await assets.upload(blob);
+    const id=slot.day+"_"+pad(slot.hour)+"_"+uid;
+    const ref=posts().doc(id);
+    if((await ref.get()).exists){toast("이번 시간은 이미 올렸어요");closeRec();return}
+    await ref.set({uid,day:slot.day,hour:slot.hour,assetId:up.id,url:up.url,ts:Date.now()});
+    closeRec();toast("올렸어요! 폰에는 저장되지 않아요 ✓");
+    if(slot.day.slice(0,7)===dk(S.month).slice(0,7)){monthDays[slot.day]=(monthDays[slot.day]||0)+1;drawCal()}
+  }catch(e){
+    mmsg.textContent="올리기 실패: "+(e.code==="quota_exceeded"||e.code==="resource_exhausted"?"저장 공간이 가득 찼어요":(e.message||"다시 시도해주세요"));
+    btns([["닫기",closeRec],["다시 시도",upload,1]]);
+  }
+}
+boot();
+</script>
+</body>
+</html>
