@@ -72,6 +72,12 @@ input{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--i
 .mr{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 .mbox input{background:#fff;color:#222;margin:6px 0}
 #vm video{max-width:100%;max-height:90vh;border-radius:14px}
+.msgs{max-height:300px;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px}
+.m{max-width:82%;align-self:flex-start}.m.me{align-self:flex-end;text-align:right}
+.m small{display:block;color:var(--mute);font-size:11px;margin-bottom:1px}
+.m .b{display:inline-block;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:6px 10px;font-size:14px;word-break:break-word;white-space:pre-wrap}
+.m.me .b{background:var(--acc);color:#fff;border-color:var(--acc)}
+.send{display:flex;gap:6px;margin-top:8px}.send input{flex:1}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
 </head>
@@ -102,7 +108,7 @@ let sb,uid,myName,joined=[],R=null,monthDays={},poll=null,sig="";
 const S={day:today(),month:new Date()};
 const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}};
 const nm=(i,p)=>i===uid?"나":(p&&p.name)||"친구";
-function clean(){clearInterval(poll)}
+function clean(){clearInterval(poll);clearInterval(chatPoll);chatOpen=false}
 
 async function boot(){
   let url=SUPABASE_URL,key=SUPABASE_KEY;
@@ -147,13 +153,41 @@ async function ensureMember(){
   const {data:mx}=await sb.from("members").select("pos").eq("room_id",R.id).order("pos",{ascending:false}).limit(1);
   await sb.from("members").insert({room_id:R.id,uid,name:myName,pos:(mx&&mx.length?mx[0].pos:0)+1,ts:Date.now()});
 }
+let chatOpen=false,chatPoll=null,msgSig="";
+const hhmm=t=>{const d=new Date(t);return pad(d.getHours())+":"+pad(d.getMinutes())};
+function toggleChat(){
+  chatOpen=!chatOpen;clearInterval(chatPoll);
+  if(!chatOpen){$("chat").style.display="none";$("chat").innerHTML="";return}
+  $("chat").style.display="block";msgSig="";
+  $("chat").innerHTML='<div class="card"><div class="msgs" id="msgs"></div><div class="send"><input id="mi" maxlength="300" placeholder="메시지 입력"><button class="btn p" id="ms">전송</button></div></div>';
+  $("ms").onclick=sendMsg;$("mi").onkeydown=e=>{if(e.key==="Enter")sendMsg()};
+  loadMsgs(true);chatPoll=setInterval(()=>loadMsgs(false),3000);
+}
+async function loadMsgs(scroll){
+  if(!R||!chatOpen||!$("msgs"))return;
+  const {data,error}=await sb.from("messages").select("*").eq("room_id",R.id).order("id",{ascending:false}).limit(100);
+  if(error){if(!warned){warned=true;toast("Supabase에서 supabase-chat.sql을 실행해주세요")}return}
+  const list=(data||[]).reverse(),sg=list.map(m=>m.id).join();
+  if(sg===msgSig&&!scroll)return;msgSig=sg;
+  const el=$("msgs"),near=scroll||el.scrollHeight-el.scrollTop-el.clientHeight<60;
+  el.innerHTML=list.length?list.map(m=>`<div class="m ${m.uid===uid?"me":""}"><small>${m.uid===uid?"":esc(m.name||"친구")+" · "}${hhmm(m.ts)}</small><div class="b">${esc(m.body)}</div></div>`).join(""):'<div class="none">첫 메시지를 보내보세요 👋</div>';
+  if(near)el.scrollTop=el.scrollHeight;
+}
+async function sendMsg(){
+  const i=$("mi"),body=i.value.trim();if(!body)return;i.value="";
+  const {error}=await sb.from("messages").insert({room_id:R.id,uid,name:myName,body,ts:Date.now()});
+  if(error){i.value=body;toast("전송 실패: "+error.message);return}
+  loadMsgs(true);
+}
 async function openRoom(r){
   R=r;clean();S.day=today();S.month=new Date();showMem=false;pickFor=null;members=[];plist=[];rx=[];owner=null;
-  $("app").innerHTML=`<div class="top"><button class="btn" id="bk">‹</button><h2>${esc(r.name)}</h2><button class="code" id="cp">코드 ${esc(r.code)}</button><button class="btn" id="mb">👥</button></div>
+  $("app").innerHTML=`<div class="top"><button class="btn" id="bk">‹</button><h2>${esc(r.name)}</h2><button class="code" id="cp">코드 ${esc(r.code)}</button><button class="btn" id="cb">💬</button><button class="btn" id="mb">👥</button></div>
+  <div id="chat" style="display:none;margin-bottom:12px"></div>
   <div class="card cal" id="cal"></div><div id="feed"></div>`;
   $("bk").onclick=home;
   $("cp").onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(r.code).then(()=>toast("코드를 복사했어요"),()=>toast("코드: "+r.code))};
   $("mb").onclick=()=>{showMem=!showMem;drawAll()};
+  $("cb").onclick=toggleChat;
   $("feed").onclick=feedClick;
   drawCal();
   try{await ensureMember()}catch(e){}
