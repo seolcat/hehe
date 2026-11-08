@@ -83,6 +83,10 @@ input{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--i
 .m .b{display:inline-block;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:6px 10px;font-size:14px;word-break:break-word;white-space:pre-wrap}
 .m.me .b{background:var(--acc);color:#fff;border-color:var(--acc)}
 .send{display:flex;gap:6px;margin-top:8px}.send input{flex:1}
+.tabs{display:flex;gap:6px;margin-bottom:10px}
+.tabs button{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:8px}
+.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.err{color:#e5484d;font-size:13px;min-height:18px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
 </head>
@@ -109,10 +113,12 @@ const SUPABASE_URL="PASTE_YOUR_SUPABASE_URL";
 const SUPABASE_KEY="PASTE_YOUR_PUBLISHABLE_KEY (sb_publishable_...)";
 /* ===================================================== */
 
-let sb,uid,myName,joined=[],R=null,monthDays={},poll=null,sig="";
+let sb,uid,joined=[],R=null,monthDays={},poll=null,sig="";
 const S={day:today(),month:new Date()};
 const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}};
-const nm=(i,p)=>i===uid?"나":(p&&p.name)||"친구";
+const dn=(u,f)=>{const m=members.find(x=>x.uid===u);return (m&&m.name)||f||"친구"};
+const nm=(i,p)=>i===uid?"나":dn(i,p&&p.name);
+const myNick=()=>dn(uid,"친구");
 function clean(){clearInterval(poll);clearInterval(chatPoll);chatOpen=false}
 
 let vapid="";
@@ -124,7 +130,7 @@ const post=(url,o)=>fetch(url,{method:"POST",headers:{"Content-Type":"applicatio
 const ping=(type,id)=>post("/api/notify",{type,id}).catch(()=>{});
 async function pushSync(){
   try{
-    if(!pushOK()||LS("hl_push")!=="1"||Notification.permission!=="granted")return {ok:false,err:"알림 권한이 없어요"};
+    if(!uid||!pushOK()||LS("hl_push")!=="1"||Notification.permission!=="granted")return {ok:false,err:"알림 권한이 없어요"};
     const sub=await (await navigator.serviceWorker.ready).pushManager.getSubscription();
     if(!sub)return {ok:false,err:"알림 구독이 없어요"};
     const r=await post("/api/subscribe",{sub:sub.toJSON(),uid,rooms:joined.map(x=>x.id)});
@@ -172,47 +178,119 @@ async function boot(){
     navigator.serviceWorker.register("/sw.js").catch(()=>{});
     navigator.serviceWorker.addEventListener("message",e=>{const r=e.data&&joined.find(x=>x.id===e.data.room);if(r)openRoom(r)});
   }
-  uid=LS("hl_uid");if(!uid){uid="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);LS("hl_uid",uid)}
-  myName=LS("hl_name");if(!myName){myName=(prompt("친구들에게 보일 이름을 적어주세요")||"").trim().slice(0,12)||"친구";LS("hl_name",myName)}
-  try{joined=JSON.parse(LS("hl_rooms")||"[]")}catch(e){joined=[]}
-  home();
+  await authStart();
+}
+async function loadJoined(){
+  try{
+    const {data:mm}=await sb.from("members").select("room_id").eq("uid",uid).limit(200);
+    const ids=(mm||[]).map(x=>x.room_id);
+    if(!ids.length){joined=[];return}
+    const {data:rr}=await sb.from("rooms").select("id,name,code").in("id",ids);
+    joined=rr||[];
+  }catch(e){}
+}
+async function afterLogin(){
+  await loadJoined();home();
   const qr=new URLSearchParams(location.search).get("room");
   if(qr){const r=joined.find(x=>x.id===qr);if(r)openRoom(r)}
   pushSync();
 }
-function saveJoined(r){if(!joined.some(x=>x.id===r.id)){joined.push(r);LS("hl_rooms",JSON.stringify(joined));pushSync()}}
+async function authStart(){
+  const tk=LS("hl_token");
+  if(tk){
+    try{
+      const r=await post("/api/me",{token:tk});
+      if(r.ok){uid=(await r.json()).uid;return afterLogin()}
+      if(r.status===401)LS("hl_token","");
+      else throw 0;
+    }catch(e){
+      $("app").innerHTML='<h1>아워<span>로그</span> ⏱</h1><div class="card" style="margin-top:14px">서버에 연결할 수 없어요. 잠시 뒤 다시 시도해주세요.<div class="form"><button class="btn p" id="rt">다시 시도</button></div></div>';
+      $("rt").onclick=authStart;return;
+    }
+  }
+  loginScreen("login");
+}
+function loginScreen(mode){
+  const su=mode==="signup";
+  $("app").innerHTML=`<h1>아워<span>로그</span> ⏱</h1><p class="sub">${su?"새 계정을 만들어요.":"로그인하고 친구들과 일상을 나눠요."} 아이디는 로그인할 때만 쓰이고 다른 사람에게 보이지 않아요.</p>
+  <div class="card"><div class="tabs"><button class="${su?"":"on"}" data-m="login">로그인</button><button class="${su?"on":""}" data-m="signup">회원가입</button></div>
+  <div class="form"><input id="lu" maxlength="20" placeholder="아이디 (영문 소문자·숫자·_ 4~20자)" autocapitalize="none" autocomplete="username" spellcheck="false">
+  <input id="lp" type="password" placeholder="비밀번호 (8자 이상)" autocomplete="${su?"new-password":"current-password"}">
+  ${su?'<input id="lp2" type="password" placeholder="비밀번호 확인" autocomplete="new-password">':""}
+  <div class="err" id="lerr"></div>
+  <button class="btn p" id="lgo">${su?"가입하고 시작하기":"로그인"}</button></div>
+  ${su&&LS("hl_uid")?'<p class="none" style="margin:8px 0 0">이 기기에서 쓰던 방과 기록은 새 계정으로 자동으로 옮겨져요.</p>':""}</div>`;
+  document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>loginScreen(b.dataset.m));
+  $("lgo").onclick=()=>doAuth(su);
+  ["lu","lp","lp2"].forEach(i=>{const e=$(i);if(e)e.onkeydown=ev=>{if(ev.key==="Enter")doAuth(su)}});
+}
+async function doAuth(su){
+  const u=$("lu").value.trim().toLowerCase(),p=$("lp").value,err=t=>{$("lerr").textContent=t};
+  err("");
+  if(!/^[a-z0-9_]{4,20}$/.test(u))return err("아이디는 영문 소문자, 숫자, _ 로 4~20자로 만들어주세요.");
+  if(p.length<8)return err("비밀번호는 8자 이상으로 만들어주세요.");
+  if(su&&p!==$("lp2").value)return err("비밀번호가 서로 달라요.");
+  $("lgo").disabled=true;
+  try{
+    const r=await post(su?"/api/signup":"/api/login",su?{username:u,password:p,legacy:LS("hl_uid")||""}:{username:u,password:p});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){
+      $("lgo").disabled=false;
+      if(r.status===409)return err("이미 사용 중인 아이디예요. 다른 아이디로 바꿔주세요.");
+      if(r.status===401)return err("아이디 또는 비밀번호가 맞지 않아요.");
+      return err(j.message||("오류가 났어요 ("+r.status+")"));
+    }
+    LS("hl_token",j.token);uid=j.uid;
+    if(su){try{localStorage.removeItem("hl_uid")}catch(e){}}
+    afterLogin();
+  }catch(e){$("lgo").disabled=false;err("서버에 연결할 수 없어요.")}
+}
+async function logout(){
+  const tk=LS("hl_token");
+  try{await post("/api/me",{token:tk,logout:true})}catch(e){}
+  LS("hl_token","");uid=null;joined=[];R=null;clean();loginScreen("login");
+}
+function saveJoined(r){if(!joined.some(x=>x.id===r.id)){joined.push(r);pushSync()}}
 
-function home(){
-  R=null;clean();
-  $("app").innerHTML=`<h1>아워<span>로그</span> ⏱</h1><p class="sub">${esc(myName)}님, 친구들과 1시간마다 2초 영상으로 일상을 나눠요.</p>
+async function home(){
+  R=null;clean();await loadJoined();if(R)return;
+  $("app").innerHTML=`<h1>아워<span>로그</span> ⏱</h1><p class="sub">친구들과 1시간마다 2초 영상으로 일상을 나눠요.</p>
   <div class="rooms">${joined.length?joined.map(r=>`<button class="room" data-open="${esc(r.id)}"><b>${esc(r.name)}</b><small>입장 ›</small></button>`).join(""):'<div class="none">아직 참여한 방이 없어요. 아래에서 만들거나 코드로 입장하세요.</div>'}</div>
-  <div class="card"><b>새 방 만들기</b><div class="form"><input id="nn" maxlength="20" placeholder="방 이름 (예: 우리 가족)"><button class="btn p" id="mk">만들기</button></div></div>
-  <div class="card" style="margin-top:10px"><b>초대 코드로 입장</b><div class="form"><input id="cc" maxlength="8" placeholder="6자리 코드" style="text-transform:uppercase"><button class="btn" id="jn">입장하기</button></div></div>
-  <div class="card" style="margin-top:10px" id="pc"></div>`;
-  $("mk").onclick=makeRoom;$("jn").onclick=joinRoom;drawPush();
+  <div class="card"><b>새 방 만들기</b><div class="form"><input id="nn" maxlength="20" placeholder="방 이름 (예: 우리 가족)"><input id="nk1" maxlength="12" placeholder="이 방에서 쓸 닉네임"><button class="btn p" id="mk">만들기</button></div></div>
+  <div class="card" style="margin-top:10px"><b>초대 코드로 입장</b><div class="form"><input id="cc" maxlength="8" placeholder="6자리 코드" style="text-transform:uppercase"><input id="nk2" maxlength="12" placeholder="이 방에서 쓸 닉네임"><button class="btn" id="jn">입장하기</button></div></div>
+  <div class="card" style="margin-top:10px" id="pc"></div>
+  <button class="btn" id="lo" style="margin-top:14px;width:100%">로그아웃</button>`;
+  $("mk").onclick=makeRoom;$("jn").onclick=joinRoom;$("lo").onclick=logout;drawPush();
   document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>openRoom(joined.find(r=>r.id===b.dataset.open)));
 }
 async function makeRoom(){
   const name=$("nn").value.trim();if(!name){toast("방 이름을 적어주세요");return}
+  const nick=$("nk1").value.trim().slice(0,12);if(!nick){toast("이 방에서 쓸 닉네임을 적어주세요");return}
   const code=Array.from({length:6},()=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.random()*32|0]).join("");
   const id="r"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
   const {error}=await sb.from("rooms").insert({id,name,code,owner:uid,ts:Date.now()});
   if(error){toast("방을 만들 수 없어요: "+error.message);return}
+  try{await ensureMember(id,nick)}catch(e){toast("멤버 등록 실패: "+e.message);return}
   const r={id,name,code};saveJoined(r);toast("방을 만들었어요. 코드: "+code);openRoom(r);
 }
 async function joinRoom(){
   const code=$("cc").value.trim().toUpperCase();if(!code)return;
+  const nick=$("nk2").value.trim().slice(0,12);if(!nick){toast("이 방에서 쓸 닉네임을 적어주세요");return}
   const {data,error}=await sb.from("rooms").select("id,name,code").eq("code",code).limit(1);
   if(error){toast("입장할 수 없어요: "+error.message);return}
   if(!data.length){toast("코드를 찾을 수 없어요");return}
+  let existed=false;
+  try{existed=await ensureMember(data[0].id,nick)}catch(e){toast("입장할 수 없어요: "+e.message);return}
+  if(existed)toast("이미 입장한 방이에요. 이 방의 기존 닉네임을 써요",3500);
   saveJoined(data[0]);openRoom(data[0]);
 }
 let members=[],owner=null,rx=[],plist=[],pickFor=null,showMem=false,warned=false,EMO=["❤️","😂","👍","🔥","😮","🥹"];
-async function ensureMember(){
-  const {data:me}=await sb.from("members").select("uid").eq("room_id",R.id).eq("uid",uid).limit(1);
-  if(me&&me.length){await sb.from("members").update({name:myName}).eq("room_id",R.id).eq("uid",uid);return}
-  const {data:mx}=await sb.from("members").select("pos").eq("room_id",R.id).order("pos",{ascending:false}).limit(1);
-  await sb.from("members").insert({room_id:R.id,uid,name:myName,pos:(mx&&mx.length?mx[0].pos:0)+1,ts:Date.now()});
+async function ensureMember(rid,nick){
+  const {data:me}=await sb.from("members").select("uid").eq("room_id",rid).eq("uid",uid).limit(1);
+  if(me&&me.length)return true;
+  const {data:mx}=await sb.from("members").select("pos").eq("room_id",rid).order("pos",{ascending:false}).limit(1);
+  const {error}=await sb.from("members").insert({room_id:rid,uid,name:nick||"친구",pos:(mx&&mx.length?mx[0].pos:0)+1,ts:Date.now()});
+  if(error)throw error;return false;
 }
 let chatOpen=false,chatPoll=null,msgSig="";
 const hhmm=t=>{const d=new Date(t);return pad(d.getHours())+":"+pad(d.getMinutes())};
@@ -231,12 +309,12 @@ async function loadMsgs(scroll){
   const list=(data||[]).reverse(),sg=list.map(m=>m.id).join();
   if(sg===msgSig&&!scroll)return;msgSig=sg;
   const el=$("msgs"),near=scroll||el.scrollHeight-el.scrollTop-el.clientHeight<60;
-  el.innerHTML=list.length?list.map(m=>`<div class="m ${m.uid===uid?"me":""}"><small>${m.uid===uid?"":esc(m.name||"친구")+" · "}${hhmm(m.ts)}</small><div class="b">${esc(m.body)}</div></div>`).join(""):'<div class="none">첫 메시지를 보내보세요 👋</div>';
+  el.innerHTML=list.length?list.map(m=>`<div class="m ${m.uid===uid?"me":""}"><small>${m.uid===uid?"":esc(dn(m.uid,m.name))+" · "}${hhmm(m.ts)}</small><div class="b">${esc(m.body)}</div></div>`).join(""):'<div class="none">첫 메시지를 보내보세요 👋</div>';
   if(near)el.scrollTop=el.scrollHeight;
 }
 async function sendMsg(){
   const i=$("mi"),body=i.value.trim();if(!body)return;i.value="";
-  const {data:ins,error}=await sb.from("messages").insert({room_id:R.id,uid,name:myName,body,ts:Date.now()}).select("id");
+  const {data:ins,error}=await sb.from("messages").insert({room_id:R.id,uid,name:myNick(),body,ts:Date.now()}).select("id");
   if(error){i.value=body;toast("전송 실패: "+error.message);return}
   if(ins&&ins[0])ping("msg",ins[0].id);
   loadMsgs(true);
@@ -252,7 +330,6 @@ async function openRoom(r){
   $("cb").onclick=toggleChat;
   $("feed").onclick=feedClick;
   drawCal();
-  try{await ensureMember()}catch(e){}
   loadMonth();watchDay();
 }
 async function loadMonth(){
@@ -305,7 +382,7 @@ function drawAll(){
   let h="";
   if(showMem){
     h+=`<div class="card" style="margin-bottom:12px"><b>멤버 ${members.length}명</b>${isOwner?' <small style="color:var(--mute)">· 방장은 ▲▼로 순서를 바꿔요</small>':""}`+
-    members.map((q,i)=>`<div class="mr"><span>${i+1}. ${esc(q.name||"친구")}${q.uid===owner?" 👑":""}${q.uid===uid?" (나)":""}</span>${isOwner?`<span><button class="chip" data-up="${q.uid}">▲</button> <button class="chip" data-down="${q.uid}">▼</button></span>`:""}</div>`).join("")+
+    members.map((q,i)=>`<div class="mr"><span>${i+1}. ${esc(q.name||"친구")}${q.uid===owner?" 👑":""}${q.uid===uid?` (나) <button class="chip" data-nick="1">✏️ 닉네임</button>`:""}</span>${isOwner?`<span><button class="chip" data-up="${q.uid}">▲</button> <button class="chip" data-down="${q.uid}">▼</button></span>`:""}</div>`).join("")+
     `<button class="btn" data-leave="1" style="margin-top:10px;width:100%">방 나가기</button></div>`;
   }
   h+=`<div class="sub" style="margin-top:0"><b style="color:var(--ink)">${m}월 ${d}일 (${"일월화수목금토"[new Date(y,m-1,d).getDay()]})</b> · 영상 ${plist.length}개</div>`;
@@ -324,7 +401,7 @@ function drawAll(){
   if($("rec"))$("rec").onclick=openRec;
 }
 async function feedClick(ev){
-  const t=ev.target.closest("[data-rx],[data-pick],[data-del],[data-view],[data-up],[data-down],[data-leave]");if(!t)return;
+  const t=ev.target.closest("[data-rx],[data-pick],[data-del],[data-view],[data-up],[data-down],[data-leave],[data-nick]");if(!t)return;
   const d=t.dataset;
   if(d.pick){pickFor=pickFor===d.pick?null:d.pick;drawAll();return}
   if(d.rx){
@@ -337,6 +414,11 @@ async function feedClick(ev){
   if(d.view){$("vv").src=d.view;$("vm").classList.add("on");$("vv").muted=false;$("vv").play().catch(()=>{});return}
   if(d.del){await delPost(d.del);return}
   if(d.up||d.down){await moveMember(d.up||d.down,d.up?-1:1);return}
+  if(d.nick!==undefined){
+    const n=(prompt("이 방에서 쓸 닉네임",myNick())||"").trim().slice(0,12);
+    if(n){await sb.from("members").update({name:n}).eq("room_id",R.id).eq("uid",uid);toast("닉네임을 바꿨어요");fetchDay(true)}
+    return;
+  }
   if(d.leave!==undefined)await leaveRoom();
 }
 $("vm").onclick=e=>{if(e.target.id==="vm"){$("vv").pause();$("vv").removeAttribute("src");$("vm").classList.remove("on")}};
@@ -362,7 +444,7 @@ async function leaveRoom(){
   if(!confirm("이 방에서 나갈까요? 내가 올린 영상은 그대로 남아요."))return;
   if(owner===uid){const o=members.find(m=>m.uid!==uid);if(o)await sb.from("rooms").update({owner:o.uid}).eq("id",R.id)}
   await sb.from("members").delete().eq("room_id",R.id).eq("uid",uid);
-  joined=joined.filter(x=>x.id!==R.id);LS("hl_rooms",JSON.stringify(joined));pushSync();
+  joined=joined.filter(x=>x.id!==R.id);pushSync();
   toast("방에서 나왔어요");home();
 }
 /* ---------- recorder ---------- */
@@ -458,7 +540,7 @@ async function upload(){
     const u=await sb.storage.from("clips").upload(path,blob,{contentType:ct,upsert:false});
     if(u.error)throw u.error;
     const url=sb.storage.from("clips").getPublicUrl(path).data.publicUrl;
-    const i=await sb.from("posts").insert({id:R.id+"_"+key,room_id:R.id,uid,name:myName,day:slot.day,hour:slot.hour,url,path,caption:$("cap").value.trim().slice(0,40),ts:Date.now()});
+    const i=await sb.from("posts").insert({id:R.id+"_"+key,room_id:R.id,uid,name:myNick(),day:slot.day,hour:slot.hour,url,path,caption:$("cap").value.trim().slice(0,40),ts:Date.now()});
     if(i.error)throw i.error;
     ping("post",R.id+"_"+key);
     closeRec();toast("올렸어요! 폰에는 저장되지 않아요 ✓");
