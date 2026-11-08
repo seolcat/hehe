@@ -102,7 +102,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const pad=n=>String(n).padStart(2,"0");
 const dk=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const today=()=>dk(new Date());
-function toast(t){const e=$("toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2400)}
+function toast(t,ms){const e=$("toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),ms||2400)}
 
 /* ===== 설정: Supabase 프로젝트의 값을 붙여넣으세요 ===== */
 const SUPABASE_URL="PASTE_YOUR_SUPABASE_URL";
@@ -124,10 +124,13 @@ const post=(url,o)=>fetch(url,{method:"POST",headers:{"Content-Type":"applicatio
 const ping=(type,id)=>post("/api/notify",{type,id}).catch(()=>{});
 async function pushSync(){
   try{
-    if(!pushOK()||LS("hl_push")!=="1"||Notification.permission!=="granted")return;
-    const sub=await (await navigator.serviceWorker.ready).pushManager.getSubscription();if(!sub)return;
-    await post("/api/subscribe",{sub:sub.toJSON(),uid,rooms:joined.map(r=>r.id)});
-  }catch(e){}
+    if(!pushOK()||LS("hl_push")!=="1"||Notification.permission!=="granted")return {ok:false,err:"알림 권한이 없어요"};
+    const sub=await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if(!sub)return {ok:false,err:"알림 구독이 없어요"};
+    const r=await post("/api/subscribe",{sub:sub.toJSON(),uid,rooms:joined.map(x=>x.id)});
+    if(!r.ok){let t="";try{t=(await r.json()).error}catch(e){}return {ok:false,err:r.status+" "+(t||"")}}
+    return {ok:true};
+  }catch(e){return {ok:false,err:e.message||"오류"}}
 }
 async function enablePush(){
   if(!pushOK()){toast(isIOS?"아이폰은 홈 화면에 추가한 아이콘으로 열어야 알림을 켤 수 있어요":"이 브라우저는 알림을 지원하지 않아요");return}
@@ -137,7 +140,9 @@ async function enablePush(){
     if(perm!=="granted"){toast("알림이 허용되지 않았어요. 브라우저 설정에서 허용해주세요");drawPush();return}
     const reg=await navigator.serviceWorker.ready;
     const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(vapid)});
-    LS("hl_push","1");await pushSync();toast("알림을 켰어요 🔔");
+    LS("hl_push","1");
+    if(!joined.length){toast("알림을 켰어요. 방에 입장하면 그 방의 알림이 와요 🔔",5000)}
+    else{const r=await pushSync();if(r.ok)toast("알림을 켰어요 🔔");else toast("서버 저장 실패: "+r.err,9000)}
   }catch(e){toast("알림을 켤 수 없어요: "+(e.message||e.name))}
   drawPush();
 }
