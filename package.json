@@ -1,7 +1,5 @@
 {
   "name": "hourlog",
   "private": true,
-  "dependencies": {
-    "web-push": "^3.6.7"
-  }
+  "dependencies": { "web-push": "^3.6.7" }
 }

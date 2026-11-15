@@ -152,6 +152,14 @@ async function enablePush(){
   }catch(e){toast("알림을 켤 수 없어요: "+(e.message||e.name))}
   drawPush();
 }
+async function testPush(){
+  try{
+    const sub=await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if(!sub){toast("구독이 없어요. 알림을 껐다 다시 켜주세요",5000);return}
+    const r=await post("/api/test",{sub:sub.toJSON()});const j=await r.json().catch(()=>({}));
+    toast(r.ok?"테스트 알림을 보냈어요. 잠시 뒤 알림이 오는지 확인하세요":"테스트 실패: "+(j.message||r.status),9000);
+  }catch(e){toast("테스트 실패: "+(e.message||e.name),9000)}
+}
 async function disablePush(){
   try{
     const sub=await (await navigator.serviceWorker.ready).pushManager.getSubscription();
@@ -164,10 +172,11 @@ function drawPush(){
   const on=pushOK()&&Notification.permission==="granted"&&LS("hl_push")==="1";
   let h="<b>🔔 알림</b>";
   if(!pushOK()){h+=`<p class="none" style="margin:6px 0 0">${isIOS&&!standalone?"아이폰은 Safari 공유 버튼 → ‘홈 화면에 추가’로 만든 아이콘으로 열어야 알림을 켤 수 있어요.":"이 브라우저는 알림을 지원하지 않아요."}</p>`}
-  else if(on){h+=`<p class="none" style="margin:6px 0 8px">새 영상과 메시지가 오면 알려드려요.</p><button class="btn" id="pb">알림 끄기</button>`}
+  else if(on){h+=`<p class="none" style="margin:6px 0 8px">새 영상과 메시지가 오면 알려드려요.</p><button class="btn" id="pb">알림 끄기</button> <button class="btn" id="pt">테스트 알림</button>`}
   else{h+=`<p class="none" style="margin:6px 0 8px">친구가 영상을 올리거나 메시지를 보내면 알려드려요.</p><button class="btn p" id="pb">알림 켜기</button>`}
   el.innerHTML=h;
   if($("pb"))$("pb").onclick=on?disablePush:enablePush;
+  if($("pt"))$("pt").onclick=testPush;
 }
 async function boot(){
   let url=SUPABASE_URL,key=SUPABASE_KEY;
